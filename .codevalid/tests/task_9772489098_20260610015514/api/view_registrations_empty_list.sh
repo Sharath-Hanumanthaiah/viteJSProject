@@ -10,17 +10,18 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Given — Assume seeded in-memory data contains event evt-002 and no registrations for that event.
+# Given — The seeded application data contains event evt-002 and no registrations for it.
+# No public setup API is available, so this test validates the expected seeded state.
 
-# When — GET /api/registrations/evt-002
+# When — Retrieve registrations for the event with no registrations.
 HTTP_STATUS="$(curl -sS -o "$RESPONSE_FILE" -w '%{http_code}' \
   "$BASE_URL/api/registrations/evt-002")"
 
-# Then — HTTP 200 with an empty JSON array.
+# Then — Response is 200 with an empty JSON array.
 [ "$HTTP_STATUS" = "200" ]
-BODY_COMPACT="$(tr -d '\n[:space:]' < "$RESPONSE_FILE")"
+BODY_COMPACT="$(tr -d '[:space:]' < "$RESPONSE_FILE")"
 [ "$BODY_COMPACT" = "[]" ]
 
-# Cleanup — No side effects to undo for this read-only test.
-
 echo "CODEVALID_TEST_ASSERTION_OK:view_registrations_empty_list"
+
+# Cleanup — No server-side side effects were created; temporary response file is removed by trap.

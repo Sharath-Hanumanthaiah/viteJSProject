@@ -4,42 +4,57 @@ set -eu
 BASE_URL="${BASE_URL:-http://app:6713}"
 CASE_SUFFIX="$(date +%s)-$$"
 EVENT_ID="evt-100"
-BASE_EMAIL="existing.${CASE_SUFFIX}@example.com"
-FIRST_RESPONSE_FILE="/tmp/registration_rejected_duplicate_email_first_${CASE_SUFFIX}.json"
-SECOND_RESPONSE_FILE="/tmp/registration_rejected_duplicate_email_second_${CASE_SUFFIX}.json"
-THIRD_RESPONSE_FILE="/tmp/registration_rejected_duplicate_email_third_${CASE_SUFFIX}.json"
+EMAIL_BASE="existing+${CASE_SUFFIX}@example.com"
+NAME_ONE="Existing User"
+NAME_TWO="Another User"
+PHONE_ONE="+1-555-777-8888"
+PHONE_TWO="+1-555-999-0000"
+EVENTS_FILE="/tmp/registration_rejected_duplicate_email_events_${CASE_SUFFIX}.json"
+SETUP_FILE="/tmp/registration_rejected_duplicate_email_setup_${CASE_SUFFIX}.json"
+RESPONSE_FILE_ONE="/tmp/registration_rejected_duplicate_email_response_one_${CASE_SUFFIX}.json"
+RESPONSE_FILE_TWO="/tmp/registration_rejected_duplicate_email_response_two_${CASE_SUFFIX}.json"
+REGISTRATIONS_FILE="/tmp/registration_rejected_duplicate_email_registrations_${CASE_SUFFIX}.json"
 
-cleanup() {
-  rm -f "$FIRST_RESPONSE_FILE" "$SECOND_RESPONSE_FILE" "$THIRD_RESPONSE_FILE"
+cleanup_files() {
+  rm -f "$EVENTS_FILE" "$SETUP_FILE" "$RESPONSE_FILE_ONE" "$RESPONSE_FILE_TWO" "$REGISTRATIONS_FILE"
 }
-trap cleanup EXIT
+trap cleanup_files EXIT
 
-# Given — Create an initial registration for the event using a unique email.
-FIRST_STATUS="$(curl -sS -o "$FIRST_RESPONSE_FILE" -w '%{http_code}' \
+# Given — verify the seeded event exists and create the initial registration.
+EVENTS_STATUS="$(curl -sS -o "$EVENTS_FILE" -w '%{http_code}' "$BASE_URL/api/events")"
+[ "$EVENTS_STATUS" = "200" ]
+grep -F '"id":"evt-100"' "$EVENTS_FILE" >/dev/null
+
+SETUP_STATUS="$(curl -sS -o "$SETUP_FILE" -w '%{http_code}' \
   -X POST "$BASE_URL/api/registrations" \
   -H 'Content-Type: application/json' \
-  --data "{\"eventId\":\"${EVENT_ID}\",\"name\":\"Existing User\",\"email\":\"${BASE_EMAIL}\",\"phone\":\"+1-555-777-8888\"}")"
-[ "$FIRST_STATUS" = "201" ]
-grep -F "\"email\":\"${BASE_EMAIL}\"" "$FIRST_RESPONSE_FILE" >/dev/null
+  --data "{\"eventId\":\"${EVENT_ID}\",\"name\":\"${NAME_ONE}\",\"email\":\"${EMAIL_BASE}\",\"phone\":\"${PHONE_ONE}\"}")"
+[ "$SETUP_STATUS" = "201" ]
+grep -F "\"email\":\"${EMAIL_BASE}\"" "$SETUP_FILE" >/dev/null
 
-# When — Re-submit the same email and then the same email with different casing.
-SECOND_STATUS="$(curl -sS -o "$SECOND_RESPONSE_FILE" -w '%{http_code}' \
+# When — retry with the same email and with different casing.
+HTTP_STATUS_ONE="$(curl -sS -o "$RESPONSE_FILE_ONE" -w '%{http_code}' \
   -X POST "$BASE_URL/api/registrations" \
   -H 'Content-Type: application/json' \
-  --data "{\"eventId\":\"${EVENT_ID}\",\"name\":\"Existing User\",\"email\":\"${BASE_EMAIL}\",\"phone\":\"+1-555-777-8888\"}")"
+  --data "{\"eventId\":\"${EVENT_ID}\",\"name\":\"${NAME_ONE}\",\"email\":\"${EMAIL_BASE}\",\"phone\":\"${PHONE_ONE}\"}")"
 
-UPPER_EMAIL="$(printf '%s' "$BASE_EMAIL" | tr '[:lower:]' '[:upper:]')"
-THIRD_STATUS="$(curl -sS -o "$THIRD_RESPONSE_FILE" -w '%{http_code}' \
+UPPER_EMAIL="$(printf '%s' "$EMAIL_BASE" | tr '[:lower:]' '[:upper:]')"
+HTTP_STATUS_TWO="$(curl -sS -o "$RESPONSE_FILE_TWO" -w '%{http_code}' \
   -X POST "$BASE_URL/api/registrations" \
   -H 'Content-Type: application/json' \
-  --data "{\"eventId\":\"${EVENT_ID}\",\"name\":\"Another User\",\"email\":\"${UPPER_EMAIL}\",\"phone\":\"+1-555-999-0000\"}")"
+  --data "{\"eventId\":\"${EVENT_ID}\",\"name\":\"${NAME_TWO}\",\"email\":\"${UPPER_EMAIL}\",\"phone\":\"${PHONE_TWO}\"}")"
 
-# Then — Both duplicate attempts should return the duplicate-email validation error.
-[ "$SECOND_STATUS" = "400" ]
-grep -F '"message":"This email is already registered for this event."' "$SECOND_RESPONSE_FILE" >/dev/null
-[ "$THIRD_STATUS" = "400" ]
-grep -F '"message":"This email is already registered for this event."' "$THIRD_RESPONSE_FILE" >/dev/null
+# Then — both duplicate attempts should fail and only one registration should remain for the original email.
+[ "$HTTP_STATUS_ONE" = "400" ]
+grep -F 'This email is already registered for this event.' "$RESPONSE_FILE_ONE" >/dev/null
+[ "$HTTP_STATUS_TWO" = "400" ]
+grep -F 'This email is already registered for this event.' "$RESPONSE_FILE_TWO" >/dev/null
+
+REG_STATUS="$(curl -sS -o "$REGISTRATIONS_FILE" -w '%{http_code}' "$BASE_URL/api/registrations/${EVENT_ID}")"
+[ "$REG_STATUS" = "200" ]
+MATCH_COUNT="$(grep -o "\"email\":\"${EMAIL_BASE}\"" "$REGISTRATIONS_FILE" | wc -l | tr -d ' ')"
+[ "$MATCH_COUNT" = "1" ]
 
 echo "CODEVALID_TEST_ASSERTION_OK:registration_rejected_duplicate_email"
 
-# Cleanup — No public delete/reset registration API is exposed; temp files are removed by trap.
+# Cleanup — no delete endpoint is exposed; temp files are removed by trap.

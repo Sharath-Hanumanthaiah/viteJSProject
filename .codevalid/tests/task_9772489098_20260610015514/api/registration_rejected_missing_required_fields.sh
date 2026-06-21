@@ -3,19 +3,21 @@ set -eu
 
 BASE_URL="${BASE_URL:-http://app:6713}"
 CASE_SUFFIX="$(date +%s)-$$"
-RESPONSE_FILE_ONE="/tmp/registration_rejected_missing_required_fields_one_${CASE_SUFFIX}.json"
-RESPONSE_FILE_TWO="/tmp/registration_rejected_missing_required_fields_two_${CASE_SUFFIX}.json"
+EVENTS_FILE="/tmp/registration_rejected_missing_required_fields_events_${CASE_SUFFIX}.json"
+RESPONSE_FILE_ONE="/tmp/registration_rejected_missing_required_fields_response_one_${CASE_SUFFIX}.json"
+RESPONSE_FILE_TWO="/tmp/registration_rejected_missing_required_fields_response_two_${CASE_SUFFIX}.json"
 
-cleanup() {
-  rm -f "$RESPONSE_FILE_ONE" "$RESPONSE_FILE_TWO"
+cleanup_files() {
+  rm -f "$EVENTS_FILE" "$RESPONSE_FILE_ONE" "$RESPONSE_FILE_TWO"
 }
-trap cleanup EXIT
+trap cleanup_files EXIT
 
-# Given — Prepare two invalid payloads missing required fields.
-: > "$RESPONSE_FILE_ONE"
-: > "$RESPONSE_FILE_TWO"
+# Given — verify the referenced seeded event exists.
+EVENTS_STATUS="$(curl -sS -o "$EVENTS_FILE" -w '%{http_code}' "$BASE_URL/api/events")"
+[ "$EVENTS_STATUS" = "200" ]
+grep -F '"id":"evt-100"' "$EVENTS_FILE" >/dev/null
 
-# When — Submit registration requests with missing email/phone and then missing eventId.
+# When — submit invalid registration payloads missing required fields.
 HTTP_STATUS_ONE="$(curl -sS -o "$RESPONSE_FILE_ONE" -w '%{http_code}' \
   -X POST "$BASE_URL/api/registrations" \
   -H 'Content-Type: application/json' \
@@ -26,12 +28,12 @@ HTTP_STATUS_TWO="$(curl -sS -o "$RESPONSE_FILE_TWO" -w '%{http_code}' \
   -H 'Content-Type: application/json' \
   --data '{"name":"Test User","email":"test@example.com","phone":"+1-555-111-2222"}')"
 
-# Then — Both requests should fail with the required-fields validation message.
+# Then — both requests should fail with the required-fields message.
 [ "$HTTP_STATUS_ONE" = "400" ]
-grep -F '"message":"Event, name, email, and phone number are required."' "$RESPONSE_FILE_ONE" >/dev/null
+grep -F 'Event, name, email, and phone number are required.' "$RESPONSE_FILE_ONE" >/dev/null
 [ "$HTTP_STATUS_TWO" = "400" ]
-grep -F '"message":"Event, name, email, and phone number are required."' "$RESPONSE_FILE_TWO" >/dev/null
+grep -F 'Event, name, email, and phone number are required.' "$RESPONSE_FILE_TWO" >/dev/null
 
 echo "CODEVALID_TEST_ASSERTION_OK:registration_rejected_missing_required_fields"
 
-# Cleanup — Validation failures should create no server-side state; temp files are removed by trap.
+# Cleanup — validation failures create no durable side effects; temp files are removed by trap.

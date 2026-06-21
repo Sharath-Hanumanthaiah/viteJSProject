@@ -4,36 +4,40 @@ set -eu
 BASE_URL="${BASE_URL:-http://app:6713}"
 CASE_SUFFIX="$(date +%s)-$$"
 EVENT_ID="evt-200"
-EMAIL="jane.smith.${CASE_SUFFIX}@example.com"
-RESPONSE_FILE="/tmp/registration_rejected_before_event_start_date_${CASE_SUFFIX}.json"
-LIST_FILE="/tmp/registration_rejected_before_event_start_date_list_${CASE_SUFFIX}.json"
+EMAIL="jane.smith+${CASE_SUFFIX}@example.com"
+NAME="Jane Smith"
+PHONE="+1-555-987-6543"
+EVENTS_FILE="/tmp/registration_rejected_before_event_start_date_events_${CASE_SUFFIX}.json"
+RESPONSE_FILE="/tmp/registration_rejected_before_event_start_date_response_${CASE_SUFFIX}.json"
+REGISTRATIONS_FILE="/tmp/registration_rejected_before_event_start_date_registrations_${CASE_SUFFIX}.json"
 
-cleanup() {
-  rm -f "$RESPONSE_FILE" "$LIST_FILE"
+cleanup_files() {
+  rm -f "$EVENTS_FILE" "$RESPONSE_FILE" "$REGISTRATIONS_FILE"
 }
-trap cleanup EXIT
+trap cleanup_files EXIT
 
-# Given — Prepare valid attendee data for the seeded event assumed to have a future start date.
-: > "$RESPONSE_FILE"
-: > "$LIST_FILE"
+# Given — verify the expected seeded future event exists.
+EVENTS_STATUS="$(curl -sS -o "$EVENTS_FILE" -w '%{http_code}' "$BASE_URL/api/events")"
+[ "$EVENTS_STATUS" = "200" ]
+grep -F '"id":"evt-200"' "$EVENTS_FILE" >/dev/null
 
-# When — Attempt to register before the event start date.
+# When — attempt registration before the event opens.
 HTTP_STATUS="$(curl -sS -o "$RESPONSE_FILE" -w '%{http_code}' \
   -X POST "$BASE_URL/api/registrations" \
   -H 'Content-Type: application/json' \
-  --data "{\"eventId\":\"${EVENT_ID}\",\"name\":\"Jane Smith\",\"email\":\"${EMAIL}\",\"phone\":\"+1-555-987-6543\"}")"
+  --data "{\"eventId\":\"${EVENT_ID}\",\"name\":\"${NAME}\",\"email\":\"${EMAIL}\",\"phone\":\"${PHONE}\"}")"
 
-# Then — Expect 400 with not-open message and no persisted registration for the email.
+# Then — assert 400, expected message, and no persisted registration for this email.
 [ "$HTTP_STATUS" = "400" ]
-grep -F 'Registration has not opened yet. Registration opens on' "$RESPONSE_FILE" >/dev/null
+grep -F 'Registration has not opened yet. Registration opens on ' "$RESPONSE_FILE" >/dev/null
 
-LIST_STATUS="$(curl -sS -o "$LIST_FILE" -w '%{http_code}' "$BASE_URL/api/registrations/${EVENT_ID}")"
-[ "$LIST_STATUS" = "200" ]
-if grep -F "\"email\":\"${EMAIL}\"" "$LIST_FILE" >/dev/null; then
-  echo "unexpected registration persisted for ${EMAIL}" >&2
+REG_STATUS="$(curl -sS -o "$REGISTRATIONS_FILE" -w '%{http_code}' "$BASE_URL/api/registrations/${EVENT_ID}")"
+[ "$REG_STATUS" = "200" ]
+if grep -F "\"email\":\"${EMAIL}\"" "$REGISTRATIONS_FILE" >/dev/null; then
+  echo "unexpected persisted registration for ${EMAIL}" >&2
   exit 1
 fi
 
 echo "CODEVALID_TEST_ASSERTION_OK:registration_rejected_before_event_start_date"
 
-# Cleanup — Rejected request should create no server-side state; temp files are removed by trap.
+# Cleanup — rejection should be side-effect free; temp files are removed by trap.

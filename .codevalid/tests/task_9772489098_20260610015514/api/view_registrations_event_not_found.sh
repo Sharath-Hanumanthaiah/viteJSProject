@@ -10,16 +10,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Given — Assume no event exists with id evt-nonexistent in the in-memory dataset.
+# Given — No event exists with id evt-nonexistent.
 
-# When — GET /api/registrations/evt-nonexistent
+# When — Retrieve registrations for a non-existent event.
 HTTP_STATUS="$(curl -sS -o "$RESPONSE_FILE" -w '%{http_code}' \
   "$BASE_URL/api/registrations/evt-nonexistent")"
 
-# Then — HTTP 404 with Event not found message.
+# Then — Response is 404 with the expected error body.
 [ "$HTTP_STATUS" = "404" ]
 grep -F '"message":"Event not found."' "$RESPONSE_FILE" >/dev/null
 
-# Cleanup — No side effects to undo for this read-only test.
-
 echo "CODEVALID_TEST_ASSERTION_OK:view_registrations_event_not_found"
+
+# Cleanup — No server-side side effects were created; temporary response file is removed by trap.

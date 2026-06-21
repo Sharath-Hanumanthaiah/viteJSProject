@@ -4,36 +4,41 @@ set -eu
 BASE_URL="${BASE_URL:-http://app:6713}"
 CASE_SUFFIX="$(date +%s)-$$"
 EVENT_ID="evt-500"
-EMAIL="endday.${CASE_SUFFIX}@example.com"
-RESPONSE_FILE="/tmp/successful_registration_boundary_on_end_date_${CASE_SUFFIX}.json"
-LIST_FILE="/tmp/successful_registration_boundary_on_end_date_list_${CASE_SUFFIX}.json"
+EMAIL="endday+${CASE_SUFFIX}@example.com"
+NAME="End Day User"
+PHONE="+1-555-222-0000"
+EVENTS_FILE="/tmp/successful_registration_boundary_on_end_date_events_${CASE_SUFFIX}.json"
+RESPONSE_FILE="/tmp/successful_registration_boundary_on_end_date_response_${CASE_SUFFIX}.json"
+REGISTRATIONS_FILE="/tmp/successful_registration_boundary_on_end_date_registrations_${CASE_SUFFIX}.json"
 
-cleanup() {
-  rm -f "$RESPONSE_FILE" "$LIST_FILE"
+cleanup_files() {
+  rm -f "$EVENTS_FILE" "$RESPONSE_FILE" "$REGISTRATIONS_FILE"
 }
-trap cleanup EXIT
+trap cleanup_files EXIT
 
-# Given — Use a unique attendee email for the seeded end-date boundary event assumed open today.
-: > "$RESPONSE_FILE"
-: > "$LIST_FILE"
+# Given — verify the seeded boundary-end event exists.
+EVENTS_STATUS="$(curl -sS -o "$EVENTS_FILE" -w '%{http_code}' "$BASE_URL/api/events")"
+[ "$EVENTS_STATUS" = "200" ]
+grep -F '"id":"evt-500"' "$EVENTS_FILE" >/dev/null
 
-# When — Submit a registration on the end-date boundary event.
+# When — create a registration on the boundary-end event.
 HTTP_STATUS="$(curl -sS -o "$RESPONSE_FILE" -w '%{http_code}' \
   -X POST "$BASE_URL/api/registrations" \
   -H 'Content-Type: application/json' \
-  --data "{\"eventId\":\"${EVENT_ID}\",\"name\":\"End Day User\",\"email\":\"${EMAIL}\",\"phone\":\"+1-555-222-0000\"}")"
+  --data "{\"eventId\":\"${EVENT_ID}\",\"name\":\"${NAME}\",\"email\":\"${EMAIL}\",\"phone\":\"${PHONE}\"}")"
 
-# Then — Expect 201 and the created registration to appear in the event registration list.
+# Then — assert 201 and persisted registration details.
 [ "$HTTP_STATUS" = "201" ]
-grep -F '"eventId":"evt-500"' "$RESPONSE_FILE" >/dev/null
-grep -F '"name":"End Day User"' "$RESPONSE_FILE" >/dev/null
+grep -F '"id":"reg-' "$RESPONSE_FILE" >/dev/null
+grep -F "\"eventId\":\"${EVENT_ID}\"" "$RESPONSE_FILE" >/dev/null
+grep -F "\"name\":\"${NAME}\"" "$RESPONSE_FILE" >/dev/null
 grep -F "\"email\":\"${EMAIL}\"" "$RESPONSE_FILE" >/dev/null
-grep -F '"phone":"+1-555-222-0000"' "$RESPONSE_FILE" >/dev/null
+grep -F "\"phone\":\"${PHONE}\"" "$RESPONSE_FILE" >/dev/null
 
-LIST_STATUS="$(curl -sS -o "$LIST_FILE" -w '%{http_code}' "$BASE_URL/api/registrations/${EVENT_ID}")"
-[ "$LIST_STATUS" = "200" ]
-grep -F "\"email\":\"${EMAIL}\"" "$LIST_FILE" >/dev/null
+REG_STATUS="$(curl -sS -o "$REGISTRATIONS_FILE" -w '%{http_code}' "$BASE_URL/api/registrations/${EVENT_ID}")"
+[ "$REG_STATUS" = "200" ]
+grep -F "\"email\":\"${EMAIL}\"" "$REGISTRATIONS_FILE" >/dev/null
 
 echo "CODEVALID_TEST_ASSERTION_OK:successful_registration_boundary_on_end_date"
 
-# Cleanup — No public delete/reset registration API is exposed; temp files are removed by trap.
+# Cleanup — no delete endpoint is exposed; temp files are removed by trap.

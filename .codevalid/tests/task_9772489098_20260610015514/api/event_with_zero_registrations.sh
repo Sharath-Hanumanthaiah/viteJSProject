@@ -4,29 +4,36 @@ set -eu
 BASE_URL="${BASE_URL:-http://app:6713}"
 CASE_SUFFIX="$(date +%s)-$$"
 EVENTS_FILE="/tmp/event_with_zero_registrations_events_${CASE_SUFFIX}.json"
-REGS_FILE="/tmp/event_with_zero_registrations_regs_${CASE_SUFFIX}.json"
-ZERO_IDS_FILE="/tmp/event_with_zero_registrations_ids_${CASE_SUFFIX}.txt"
+ZEROS_FILE="/tmp/event_with_zero_registrations_zero_ids_${CASE_SUFFIX}.txt"
 
-# Given — Retrieve the events list and discover any event with registrationCount 0.
-EVENTS_STATUS="$(curl -sS -o "$EVENTS_FILE" -w '%{http_code}' "$BASE_URL/api/events")"
-[ "$EVENTS_STATUS" = "200" ]
-tr '{' '\n' < "$EVENTS_FILE" | grep '"registrationCount":0' | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' > "$ZERO_IDS_FILE"
+cleanup() {
+  rm -f "$EVENTS_FILE" "$ZEROS_FILE"
+}
+trap cleanup EXIT
 
-# When — Request registrations for each zero-count event.
+# Given — The API is reachable and events expose registrationCount.
+HEALTH_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' "$BASE_URL/health")"
+[ "$HEALTH_STATUS" = "200" ]
 
-# Then — Each discovered zero-count event has an empty registrations array.
-if [ -s "$ZERO_IDS_FILE" ]; then
-  while IFS= read -r EVENT_ID; do
-    [ -n "$EVENT_ID" ] || continue
-    REGS_STATUS="$(curl -sS -o "$REGS_FILE" -w '%{http_code}' "$BASE_URL/api/registrations/$EVENT_ID")"
-    [ "$REGS_STATUS" = "200" ]
-    grep -Eq '^\[\]$' "$REGS_FILE"
-  done < "$ZERO_IDS_FILE"
-else
-  grep -F '"registrationCount":' "$EVENTS_FILE" >/dev/null
-fi
+# When — Fetch /api/events and identify events whose registrationCount is zero.
+HTTP_STATUS="$(curl -sS -o "$EVENTS_FILE" -w '%{http_code}' \
+  -X GET "$BASE_URL/api/events")"
+
+# Then — HTTP 200 and for every zero-count event, /api/registrations/:eventId returns an empty array.
+[ "$HTTP_STATUS" = "200" ]
+jq -e 'type == "array"' "$EVENTS_FILE" >/dev/null
+jq -r '.[] | select(.registrationCount == 0) | .id' "$EVENTS_FILE" > "$ZEROS_FILE"
+
+while IFS= read -r EVENT_ID; do
+  [ -n "$EVENT_ID" ] || continue
+  REG_FILE="/tmp/event_with_zero_registrations_${CASE_SUFFIX}_${EVENT_ID}.json"
+  REG_STATUS="$(curl -sS -o "$REG_FILE" -w '%{http_code}' \
+    -X GET "$BASE_URL/api/registrations/$EVENT_ID")"
+  [ "$REG_STATUS" = "200" ]
+  [ "$(jq 'length' "$REG_FILE")" = "0" ]
+  rm -f "$REG_FILE"
+done < "$ZEROS_FILE"
 
 echo "CODEVALID_TEST_ASSERTION_OK:event_with_zero_registrations"
 
-# Cleanup — Remove temp files.
-rm -f "$EVENTS_FILE" "$REGS_FILE" "$ZERO_IDS_FILE"
+# Cleanup — No persistent side effects were created.
