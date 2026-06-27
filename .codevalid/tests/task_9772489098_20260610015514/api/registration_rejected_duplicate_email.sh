@@ -2,77 +2,84 @@
 set -eu
 BASE_URL="${BASE_URL:-http://app:6713}"
 CASE_SUFFIX="$(date +%s)-$$"
-TODAY="$(date -u +%F)"
-DUPLICATE_EMAIL="existing-${CASE_SUFFIX}@example.com"
+TODAY="$(date -u +%Y-%m-%d)"
 TMP_DIR="$(mktemp -d)"
+EVENT_RESPONSE="$TMP_DIR/create_event.json"
+FIRST_RESPONSE="$TMP_DIR/first_registration.json"
+DUP_RESPONSE_ONE="$TMP_DIR/duplicate_one.json"
+DUP_RESPONSE_TWO="$TMP_DIR/duplicate_two.json"
+FIRST_STATUS="$TMP_DIR/first_registration.status"
+DUP_STATUS_ONE="$TMP_DIR/duplicate_one.status"
+DUP_STATUS_TWO="$TMP_DIR/duplicate_two.status"
+REG_LIST_FILE="$TMP_DIR/registration_rejected_duplicate_email_regs.json"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-EVENT_RESPONSE="$TMP_DIR/event.json"
-EVENT_STATUS="$TMP_DIR/event.status"
-FIRST_REG_RESPONSE="$TMP_DIR/first_registration.json"
-FIRST_REG_STATUS="$TMP_DIR/first_registration.status"
-DUP_RESPONSE_ONE="$TMP_DIR/duplicate_one.json"
-DUP_STATUS_ONE="$TMP_DIR/duplicate_one.status"
-DUP_RESPONSE_TWO="$TMP_DIR/duplicate_two.json"
-DUP_STATUS_TWO="$TMP_DIR/duplicate_two.status"
-LIST_RESPONSE="$TMP_DIR/registrations.json"
-LIST_STATUS="$TMP_DIR/registrations.status"
+EMAIL="existing+${CASE_SUFFIX}@example.com"
+EMAIL_UPPER="$(printf '%s' "$EMAIL" | tr '[:lower:]' '[:upper:]')"
+PHONE_ONE="+1-555-777-8888"
+PHONE_TWO="+1-555-999-0000"
+EVENT_TITLE="Duplicate Email Event ${CASE_SUFFIX}"
+EVENT_LOCATION="Conference Room ${CASE_SUFFIX}"
 
-# Given — create an event active today and seed one successful registration through the public API
-curl -sS -o "$EVENT_RESPONSE" -w '%{http_code}' \
-  -X POST "$BASE_URL/api/events" \
+plus_days() {
+  python3 - "$1" "$2" <<'PY'
+from datetime import date, timedelta
+import sys
+print((date.fromisoformat(sys.argv[1]) + timedelta(days=int(sys.argv[2]))).isoformat())
+PY
+}
+
+START_DATE="$(plus_days "$TODAY" -1)"
+END_DATE="$(plus_days "$TODAY" 1)"
+
+# Given — create an active event and seed an initial registration via the public API
+CREATE_CODE="$(curl -sS -o "$EVENT_RESPONSE" -w '%{http_code}' -X POST "$BASE_URL/api/events" \
   -H 'Content-Type: application/json' \
-  --data "{\"title\":\"Duplicate Event ${CASE_SUFFIX}\",\"description\":\"Duplicate email scenario\",\"startDate\":\"${TODAY}\",\"endDate\":\"${TODAY}\",\"location\":\"Conference Room\"}" \
-  > "$EVENT_STATUS"
-[ "$(cat "$EVENT_STATUS")" = "201" ]
-EVENT_ID_CREATED="$(python3 - <<'PY' "$EVENT_RESPONSE"
-import json,sys
+  --data "{\"title\":\"${EVENT_TITLE}\",\"description\":\"Created by registration_rejected_duplicate_email\",\"startDate\":\"${START_DATE}\",\"endDate\":\"${END_DATE}\",\"location\":\"${EVENT_LOCATION}\"}")"
+[ "$CREATE_CODE" = "201" ]
+EVENT_ID="$(python3 - "$EVENT_RESPONSE" <<'PY'
+import json, sys
 with open(sys.argv[1], 'r', encoding='utf-8') as fh:
-    print(json.load(fh)['id'])
+    print(json.load(fh).get('id', ''))
 PY
 )"
+[ -n "$EVENT_ID" ]
 
-curl -sS -o "$FIRST_REG_RESPONSE" -w '%{http_code}' \
-  -X POST "$BASE_URL/api/registrations" \
+curl -sS -o "$FIRST_RESPONSE" -w '%{http_code}' -X POST "$BASE_URL/api/registrations" \
   -H 'Content-Type: application/json' \
-  --data "{\"eventId\":\"${EVENT_ID_CREATED}\",\"name\":\"Existing User\",\"email\":\"${DUPLICATE_EMAIL}\",\"phone\":\"+1-555-777-8888\"}" \
-  > "$FIRST_REG_STATUS"
-[ "$(cat "$FIRST_REG_STATUS")" = "201" ]
+  --data "{\"eventId\":\"${EVENT_ID}\",\"name\":\"Existing User ${CASE_SUFFIX}\",\"email\":\"${EMAIL}\",\"phone\":\"${PHONE_ONE}\"}" > "$FIRST_STATUS"
+[ "$(cat "$FIRST_STATUS")" = "201" ]
 
-# When — attempt duplicate registrations with exact-case and different-case emails
-curl -sS -o "$DUP_RESPONSE_ONE" -w '%{http_code}' \
-  -X POST "$BASE_URL/api/registrations" \
+# When — try to register the same email twice, including different case
+curl -sS -o "$DUP_RESPONSE_ONE" -w '%{http_code}' -X POST "$BASE_URL/api/registrations" \
   -H 'Content-Type: application/json' \
-  --data "{\"eventId\":\"${EVENT_ID_CREATED}\",\"name\":\"Existing User Again\",\"email\":\"${DUPLICATE_EMAIL}\",\"phone\":\"+1-555-999-0000\"}" \
-  > "$DUP_STATUS_ONE"
+  --data "{\"eventId\":\"${EVENT_ID}\",\"name\":\"Existing User ${CASE_SUFFIX}\",\"email\":\"${EMAIL}\",\"phone\":\"${PHONE_ONE}\"}" > "$DUP_STATUS_ONE"
 
-UPPER_EMAIL="$(printf '%s' "$DUPLICATE_EMAIL" | tr '[:lower:]' '[:upper:]')"
-curl -sS -o "$DUP_RESPONSE_TWO" -w '%{http_code}' \
-  -X POST "$BASE_URL/api/registrations" \
+curl -sS -o "$DUP_RESPONSE_TWO" -w '%{http_code}' -X POST "$BASE_URL/api/registrations" \
   -H 'Content-Type: application/json' \
-  --data "{\"eventId\":\"${EVENT_ID_CREATED}\",\"name\":\"Another User\",\"email\":\"${UPPER_EMAIL}\",\"phone\":\"+1-555-999-0000\"}" \
-  > "$DUP_STATUS_TWO"
+  --data "{\"eventId\":\"${EVENT_ID}\",\"name\":\"Another User ${CASE_SUFFIX}\",\"email\":\"${EMAIL_UPPER}\",\"phone\":\"${PHONE_TWO}\"}" > "$DUP_STATUS_TWO"
 
-# Then — HTTP/body assertions and single-record verification
+# Then — both duplicates are rejected and only the seeded registration remains
 [ "$(cat "$DUP_STATUS_ONE")" = "400" ]
 [ "$(cat "$DUP_STATUS_TWO")" = "400" ]
-grep -F 'This email is already registered for this event.' "$DUP_RESPONSE_ONE" >/dev/null
-grep -F 'This email is already registered for this event.' "$DUP_RESPONSE_TWO" >/dev/null
-
-curl -sS -o "$LIST_RESPONSE" -w '%{http_code}' \
-  "$BASE_URL/api/registrations/${EVENT_ID_CREATED}" \
-  > "$LIST_STATUS"
-[ "$(cat "$LIST_STATUS")" = "200" ]
-REG_COUNT="$(python3 - <<'PY' "$LIST_RESPONSE" "$DUPLICATE_EMAIL"
-import json,sys
-with open(sys.argv[1], 'r', encoding='utf-8') as fh:
-    rows = json.load(fh)
-target = sys.argv[2].lower()
-print(sum(1 for row in rows if row.get('email', '').lower() == target))
+python3 - "$DUP_RESPONSE_ONE" "$DUP_RESPONSE_TWO" <<'PY'
+import json, sys
+expected = 'This email is already registered for this event.'
+for path in sys.argv[1:]:
+    with open(path, 'r', encoding='utf-8') as fh:
+        body = json.load(fh)
+    assert body.get('message') == expected, body
 PY
-)"
-[ "$REG_COUNT" = "1" ]
+
+curl -sS "$BASE_URL/api/registrations/$EVENT_ID" > "$REG_LIST_FILE"
+python3 - "$REG_LIST_FILE" "$EMAIL" <<'PY'
+import json, sys
+with open(sys.argv[1], 'r', encoding='utf-8') as fh:
+    regs = json.load(fh)
+matching = [r for r in regs if r.get('email', '').lower() == sys.argv[2].lower()]
+assert len(matching) == 1, regs
+PY
+
+# Cleanup — no delete API exists for created event or registration data in this in-memory service
 
 echo "CODEVALID_TEST_ASSERTION_OK:registration_rejected_duplicate_email"
-
-# Cleanup — no delete endpoint or database exists; test data is isolated by unique suffix

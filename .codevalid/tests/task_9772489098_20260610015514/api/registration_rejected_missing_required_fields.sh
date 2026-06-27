@@ -2,61 +2,73 @@
 set -eu
 BASE_URL="${BASE_URL:-http://app:6713}"
 CASE_SUFFIX="$(date +%s)-$$"
-TODAY="$(date -u +%F)"
+TODAY="$(date -u +%Y-%m-%d)"
 TMP_DIR="$(mktemp -d)"
+EVENT_RESPONSE="$TMP_DIR/create_event.json"
+RESPONSE_ONE="$TMP_DIR/missing_fields_one.json"
+RESPONSE_TWO="$TMP_DIR/missing_fields_two.json"
+STATUS_ONE="$TMP_DIR/missing_fields_one.status"
+STATUS_TWO="$TMP_DIR/missing_fields_two.status"
+REG_LIST_FILE="$TMP_DIR/registration_rejected_missing_required_fields_regs.json"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-EVENT_RESPONSE="$TMP_DIR/event.json"
-EVENT_STATUS="$TMP_DIR/event.status"
-RESP_ONE="$TMP_DIR/response_one.json"
-STATUS_ONE="$TMP_DIR/status_one"
-RESP_TWO="$TMP_DIR/response_two.json"
-STATUS_TWO="$TMP_DIR/status_two"
-LIST_RESPONSE="$TMP_DIR/registrations.json"
-LIST_STATUS="$TMP_DIR/registrations.status"
+EVENT_TITLE="Missing Fields Event ${CASE_SUFFIX}"
+EVENT_LOCATION="Auditorium ${CASE_SUFFIX}"
+EMAIL_UNUSED="test.user+${CASE_SUFFIX}@example.com"
 
-# Given — create an event active today
-curl -sS -o "$EVENT_RESPONSE" -w '%{http_code}' \
-  -X POST "$BASE_URL/api/events" \
+plus_days() {
+  python3 - "$1" "$2" <<'PY'
+from datetime import date, timedelta
+import sys
+print((date.fromisoformat(sys.argv[1]) + timedelta(days=int(sys.argv[2]))).isoformat())
+PY
+}
+
+START_DATE="$(plus_days "$TODAY" -1)"
+END_DATE="$(plus_days "$TODAY" 1)"
+
+# Given — create an event that is active today
+CREATE_CODE="$(curl -sS -o "$EVENT_RESPONSE" -w '%{http_code}' -X POST "$BASE_URL/api/events" \
   -H 'Content-Type: application/json' \
-  --data "{\"title\":\"Required Fields Event ${CASE_SUFFIX}\",\"description\":\"Required fields scenario\",\"startDate\":\"${TODAY}\",\"endDate\":\"${TODAY}\",\"location\":\"Validation Room\"}" \
-  > "$EVENT_STATUS"
-[ "$(cat "$EVENT_STATUS")" = "201" ]
-EVENT_ID_CREATED="$(python3 - <<'PY' "$EVENT_RESPONSE"
-import json,sys
+  --data "{\"title\":\"${EVENT_TITLE}\",\"description\":\"Created by registration_rejected_missing_required_fields\",\"startDate\":\"${START_DATE}\",\"endDate\":\"${END_DATE}\",\"location\":\"${EVENT_LOCATION}\"}")"
+[ "$CREATE_CODE" = "201" ]
+EVENT_ID="$(python3 - "$EVENT_RESPONSE" <<'PY'
+import json, sys
 with open(sys.argv[1], 'r', encoding='utf-8') as fh:
-    print(json.load(fh)['id'])
+    print(json.load(fh).get('id', ''))
 PY
 )"
+[ -n "$EVENT_ID" ]
 
-# When — send requests missing required fields
-curl -sS -o "$RESP_ONE" -w '%{http_code}' \
-  -X POST "$BASE_URL/api/registrations" \
+# When — submit two invalid registration payloads missing required fields
+curl -sS -o "$RESPONSE_ONE" -w '%{http_code}' -X POST "$BASE_URL/api/registrations" \
   -H 'Content-Type: application/json' \
-  --data "{\"eventId\":\"${EVENT_ID_CREATED}\",\"name\":\"Test User\"}" \
-  > "$STATUS_ONE"
+  --data "{\"eventId\":\"${EVENT_ID}\",\"name\":\"Test User ${CASE_SUFFIX}\"}" > "$STATUS_ONE"
 
-curl -sS -o "$RESP_TWO" -w '%{http_code}' \
-  -X POST "$BASE_URL/api/registrations" \
+curl -sS -o "$RESPONSE_TWO" -w '%{http_code}' -X POST "$BASE_URL/api/registrations" \
   -H 'Content-Type: application/json' \
-  --data '{"name":"Test User","email":"test@example.com","phone":"+1-555-111-2222"}' \
-  > "$STATUS_TWO"
+  --data "{\"name\":\"Test User ${CASE_SUFFIX}\",\"email\":\"${EMAIL_UNUSED}\",\"phone\":\"+1-555-111-2222\"}" > "$STATUS_TWO"
 
-# Then — HTTP/body assertions and non-persistence verification
+# Then — both requests return the shared validation message and no registration exists for the event
 [ "$(cat "$STATUS_ONE")" = "400" ]
 [ "$(cat "$STATUS_TWO")" = "400" ]
-grep -F 'Event, name, email, and phone number are required.' "$RESP_ONE" >/dev/null
-grep -F 'Event, name, email, and phone number are required.' "$RESP_TWO" >/dev/null
+python3 - "$RESPONSE_ONE" "$RESPONSE_TWO" <<'PY'
+import json, sys
+expected = 'Event, name, email, and phone number are required.'
+for path in sys.argv[1:]:
+    with open(path, 'r', encoding='utf-8') as fh:
+        body = json.load(fh)
+    assert body.get('message') == expected, body
+PY
 
-curl -sS -o "$LIST_RESPONSE" -w '%{http_code}' \
-  "$BASE_URL/api/registrations/${EVENT_ID_CREATED}" \
-  > "$LIST_STATUS"
-[ "$(cat "$LIST_STATUS")" = "200" ]
-if grep -F 'test@example.com' "$LIST_RESPONSE" >/dev/null; then
-  echo "missing-fields request should not create registration" >&2
-  exit 1
-fi
+curl -sS "$BASE_URL/api/registrations/$EVENT_ID" > "$REG_LIST_FILE"
+python3 - "$REG_LIST_FILE" <<'PY'
+import json, sys
+with open(sys.argv[1], 'r', encoding='utf-8') as fh:
+    regs = json.load(fh)
+assert regs == [], regs
+PY
+
+# Cleanup — no delete API exists for created event data in this in-memory service
 
 echo "CODEVALID_TEST_ASSERTION_OK:registration_rejected_missing_required_fields"
-
-# Cleanup — no delete endpoint or database exists; test data is isolated by unique suffix

@@ -2,63 +2,68 @@
 set -eu
 BASE_URL="${BASE_URL:-http://app:6713}"
 CASE_SUFFIX="$(date +%s)-$$"
-PAST_START_DATE="$(python3 - <<'PY'
-from datetime import datetime, timedelta, timezone
-now = datetime.now(timezone.utc).date()
-print((now - timedelta(days=20)).isoformat())
-PY
-)"
-PAST_END_DATE="$(python3 - <<'PY'
-from datetime import datetime, timedelta, timezone
-now = datetime.now(timezone.utc).date()
-print((now - timedelta(days=10)).isoformat())
-PY
-)"
-ATTENDEE_EMAIL="bob.wilson-${CASE_SUFFIX}@example.com"
+TODAY="$(date -u +%Y-%m-%d)"
 TMP_DIR="$(mktemp -d)"
+EVENT_RESPONSE="$TMP_DIR/create_event.json"
+RESPONSE_FILE="$TMP_DIR/registration_rejected_after_event_end_date.json"
+STATUS_FILE="$TMP_DIR/registration_rejected_after_event_end_date.status"
+REG_LIST_FILE="$TMP_DIR/registration_rejected_after_event_end_date_regs.json"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-EVENT_RESPONSE="$TMP_DIR/event.json"
-EVENT_STATUS="$TMP_DIR/event.status"
-REG_RESPONSE="$TMP_DIR/registration.json"
-REG_STATUS="$TMP_DIR/registration.status"
-LIST_RESPONSE="$TMP_DIR/registrations.json"
-LIST_STATUS="$TMP_DIR/registrations.status"
+EMAIL="bob.wilson+${CASE_SUFFIX}@example.com"
+PHONE="+1-555-456-7890"
+NAME="Bob Wilson ${CASE_SUFFIX}"
+EVENT_TITLE="Past Event ${CASE_SUFFIX}"
+EVENT_LOCATION="Center ${CASE_SUFFIX}"
 
-# Given — create an event that already ended before today
-curl -sS -o "$EVENT_RESPONSE" -w '%{http_code}' \
-  -X POST "$BASE_URL/api/events" \
+plus_days() {
+  python3 - "$1" "$2" <<'PY'
+from datetime import date, timedelta
+import sys
+print((date.fromisoformat(sys.argv[1]) + timedelta(days=int(sys.argv[2]))).isoformat())
+PY
+}
+
+START_DATE="$(plus_days "$TODAY" -14)"
+END_DATE="$(plus_days "$TODAY" -7)"
+
+# Given — create an event that has already ended
+CREATE_CODE="$(curl -sS -o "$EVENT_RESPONSE" -w '%{http_code}' -X POST "$BASE_URL/api/events" \
   -H 'Content-Type: application/json' \
-  --data "{\"title\":\"Past Event ${CASE_SUFFIX}\",\"description\":\"Past registration scenario\",\"startDate\":\"${PAST_START_DATE}\",\"endDate\":\"${PAST_END_DATE}\",\"location\":\"South Hall\"}" \
-  > "$EVENT_STATUS"
-[ "$(cat "$EVENT_STATUS")" = "201" ]
-EVENT_ID_CREATED="$(python3 - <<'PY' "$EVENT_RESPONSE"
-import json,sys
+  --data "{\"title\":\"${EVENT_TITLE}\",\"description\":\"Created by registration_rejected_after_event_end_date\",\"startDate\":\"${START_DATE}\",\"endDate\":\"${END_DATE}\",\"location\":\"${EVENT_LOCATION}\"}")"
+[ "$CREATE_CODE" = "201" ]
+EVENT_ID="$(python3 - "$EVENT_RESPONSE" <<'PY'
+import json, sys
 with open(sys.argv[1], 'r', encoding='utf-8') as fh:
-    print(json.load(fh)['id'])
+    print(json.load(fh).get('id', ''))
 PY
 )"
+[ -n "$EVENT_ID" ]
 
 # When — attempt registration after the event end date
-curl -sS -o "$REG_RESPONSE" -w '%{http_code}' \
-  -X POST "$BASE_URL/api/registrations" \
+curl -sS -o "$RESPONSE_FILE" -w '%{http_code}' -X POST "$BASE_URL/api/registrations" \
   -H 'Content-Type: application/json' \
-  --data "{\"eventId\":\"${EVENT_ID_CREATED}\",\"name\":\"Bob Wilson\",\"email\":\"${ATTENDEE_EMAIL}\",\"phone\":\"+1-555-456-7890\"}" \
-  > "$REG_STATUS"
+  --data "{\"eventId\":\"${EVENT_ID}\",\"name\":\"${NAME}\",\"email\":\"${EMAIL}\",\"phone\":\"${PHONE}\"}" > "$STATUS_FILE"
 
-# Then — HTTP/body assertions and non-persistence verification
-[ "$(cat "$REG_STATUS")" = "400" ]
-grep -F "Registration is closed. The event ended on ${PAST_END_DATE}." "$REG_RESPONSE" >/dev/null
+# Then — assert rejection message and no persisted registration
+STATUS="$(cat "$STATUS_FILE")"
+[ "$STATUS" = "400" ]
+python3 - "$RESPONSE_FILE" "$END_DATE" <<'PY'
+import json, sys
+with open(sys.argv[1], 'r', encoding='utf-8') as fh:
+    body = json.load(fh)
+expected = f"Registration is closed. The event ended on {sys.argv[2]}."
+assert body.get('message') == expected, body
+PY
 
-curl -sS -o "$LIST_RESPONSE" -w '%{http_code}' \
-  "$BASE_URL/api/registrations/${EVENT_ID_CREATED}" \
-  > "$LIST_STATUS"
-[ "$(cat "$LIST_STATUS")" = "200" ]
-if grep -F "${ATTENDEE_EMAIL}" "$LIST_RESPONSE" >/dev/null; then
-  echo "registration should not have been recorded" >&2
-  exit 1
-fi
+curl -sS "$BASE_URL/api/registrations/$EVENT_ID" > "$REG_LIST_FILE"
+python3 - "$REG_LIST_FILE" "$EMAIL" <<'PY'
+import json, sys
+with open(sys.argv[1], 'r', encoding='utf-8') as fh:
+    regs = json.load(fh)
+assert all(r.get('email') != sys.argv[2] for r in regs), regs
+PY
+
+# Cleanup — no delete API exists for created event data in this in-memory service
 
 echo "CODEVALID_TEST_ASSERTION_OK:registration_rejected_after_event_end_date"
-
-# Cleanup — no delete endpoint or database exists; test data is isolated by unique suffix
