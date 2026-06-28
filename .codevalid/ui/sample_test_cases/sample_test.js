@@ -1,119 +1,233 @@
-/**
- * Sample Playwright test for the CodeValid UI validation suite.
- *
- * Covers:
- *  1. Sign-in page loads and renders expected elements.
- *  2. Successful sign-in with mocked API credentials navigates to Home.
- *  3. Invalid credentials show an error message.
- *
- * The ExecutionRecorder helper is used to capture a structured flow log
- * which is later uploaded to S3 by global-teardown.js.
- */
+// Sample Playwright test for the Eminence Events Registration App
+// Tests sign-in flow and basic home page functionality using mocked API routes
 
 import { test, expect } from "@playwright/test";
-import { setupMockRoutes } from "../mocks/mock-handlers.js";
+import { setupMockRoutes, teardownMockRoutes } from "../mock/mock-server.js";
 import { ExecutionRecorder } from "../helpers/execution-recorder.js";
 
-// ─── Sign-in page renders correctly ───────────────────────────────────────────
-test("CV-001: sign-in page loads with required fields", async ({
-  page,
-}, testInfo) => {
-  const recorder = new ExecutionRecorder({
-    testId: "CV-001",
-    testTitle: "sign-in page loads with required fields",
+// ─── Sign-In Page Tests ───────────────────────────────────────────────────────
+
+test.describe("Sign-In Page", () => {
+  test.beforeEach(async ({ page }) => {
+    await setupMockRoutes(page);
   });
 
-  await setupMockRoutes(page);
-
-  await recorder.step("Navigate to /signin", async () => {
-    await page.goto("/signin");
+  test.afterEach(async ({ page }) => {
+    await teardownMockRoutes(page);
   });
 
-  await recorder.step("Assert heading is visible", async () => {
-    await expect(page.getByRole("heading", { name: /welcome back/i })).toBeVisible();
+  test("CV-001: Sign-in page loads and displays form elements", async ({
+    page,
+  }, testInfo) => {
+    const recorder = new ExecutionRecorder("CV-001", testInfo.title);
+
+    await recorder.step("Navigate to sign-in page", async () => {
+      await page.goto("/signin");
+    });
+
+    await recorder.step("Verify page title / heading is visible", async () => {
+      await expect(page.getByText("Welcome Back")).toBeVisible();
+    });
+
+    await recorder.step("Verify email input is present", async () => {
+      await expect(page.getByPlaceholder("john@example.com")).toBeVisible();
+    });
+
+    await recorder.step("Verify password input is present", async () => {
+      await expect(page.getByPlaceholder("••••••••")).toBeVisible();
+    });
+
+    await recorder.step("Verify Sign In button is present", async () => {
+      await expect(
+        page.getByRole("button", { name: /sign in/i })
+      ).toBeVisible();
+    });
+
+    await recorder.save(testInfo);
   });
 
-  await recorder.step("Assert email input is present", async () => {
-    await expect(page.locator('input[name="email"]')).toBeVisible();
+  test("CV-002: Sign-in form shows validation errors for empty fields", async ({
+    page,
+  }, testInfo) => {
+    const recorder = new ExecutionRecorder("CV-002", testInfo.title);
+
+    await recorder.step("Navigate to sign-in page", async () => {
+      await page.goto("/signin");
+    });
+
+    await recorder.step("Submit empty form", async () => {
+      await page.getByRole("button", { name: /sign in/i }).click();
+    });
+
+    await recorder.step("Expect email required error", async () => {
+      await expect(page.getByText("Email is required")).toBeVisible();
+    });
+
+    await recorder.step("Expect password required error", async () => {
+      await expect(page.getByText("Password is required")).toBeVisible();
+    });
+
+    await recorder.save(testInfo);
   });
 
-  await recorder.step("Assert password input is present", async () => {
-    await expect(page.locator('input[name="password"]')).toBeVisible();
+  test("CV-003: Successful sign-in redirects to home page", async ({
+    page,
+  }, testInfo) => {
+    const recorder = new ExecutionRecorder("CV-003", testInfo.title);
+
+    await recorder.step("Navigate to sign-in page", async () => {
+      await page.goto("/signin");
+    });
+
+    await recorder.step("Fill in valid credentials", async () => {
+      await page.getByPlaceholder("john@example.com").fill("test@example.com");
+      await page.getByPlaceholder("••••••••").fill("password123");
+    });
+
+    await recorder.step("Submit sign-in form", async () => {
+      await page.getByRole("button", { name: /sign in/i }).click();
+    });
+
+    await recorder.step("Verify redirect to home (registration desk)", async () => {
+      await expect(page).toHaveURL("/");
+      await expect(page.getByText("Registration Desk")).toBeVisible();
+    });
+
+    await recorder.save(testInfo);
   });
 
-  await recorder.step("Assert submit button is present", async () => {
-    await expect(page.getByRole("button", { name: /sign in/i })).toBeVisible();
-  });
+  test("CV-004: Invalid credentials show error message", async ({
+    page,
+  }, testInfo) => {
+    const recorder = new ExecutionRecorder("CV-004", testInfo.title);
 
-  await recorder.save(testInfo);
+    await recorder.step("Navigate to sign-in page", async () => {
+      await page.goto("/signin");
+    });
+
+    await recorder.step("Fill in wrong credentials", async () => {
+      await page.getByPlaceholder("john@example.com").fill("wrong@email.com");
+      await page.getByPlaceholder("••••••••").fill("wrongpassword");
+    });
+
+    await recorder.step("Submit form", async () => {
+      await page.getByRole("button", { name: /sign in/i }).click();
+    });
+
+    await recorder.step("Verify error message appears", async () => {
+      await expect(
+        page.getByText(/invalid email or password/i)
+      ).toBeVisible();
+    });
+
+    await recorder.save(testInfo);
+  });
 });
 
-// ─── Successful sign-in ────────────────────────────────────────────────────────
-test("CV-002: successful sign-in redirects to home", async ({
-  page,
-}, testInfo) => {
-  const recorder = new ExecutionRecorder({
-    testId: "CV-002",
-    testTitle: "successful sign-in redirects to home",
-  });
+// ─── Home Page / Registration Desk Tests ─────────────────────────────────────
 
-  await setupMockRoutes(page);
+test.describe("Home Page - Registration Desk", () => {
+  test.beforeEach(async ({ page }) => {
+    await setupMockRoutes(page);
 
-  await recorder.step("Navigate to /signin", async () => {
+    // Sign in first so the protected route is accessible
     await page.goto("/signin");
-  });
-
-  await recorder.step("Fill email field", async () => {
-    await page.locator('input[name="email"]').fill("john@example.com");
-  });
-
-  await recorder.step("Fill password field", async () => {
-    await page.locator('input[name="password"]').fill("password123");
-  });
-
-  await recorder.step("Submit the form", async () => {
+    await page.getByPlaceholder("john@example.com").fill("test@example.com");
+    await page.getByPlaceholder("••••••••").fill("password123");
     await page.getByRole("button", { name: /sign in/i }).click();
+    await expect(page).toHaveURL("/");
   });
 
-  await recorder.step("Assert redirect to home page", async () => {
-    await expect(page).toHaveURL("/", { timeout: 10000 });
+  test.afterEach(async ({ page }) => {
+    await teardownMockRoutes(page);
   });
 
-  await recorder.save(testInfo);
-});
+  test("CV-005: Home page loads events and shows Registration Desk", async ({
+    page,
+  }, testInfo) => {
+    const recorder = new ExecutionRecorder("CV-005", testInfo.title);
 
-// ─── Invalid credentials show error ────────────────────────────────────────────
-test("CV-003: invalid credentials display error message", async ({
-  page,
-}, testInfo) => {
-  const recorder = new ExecutionRecorder({
-    testId: "CV-003",
-    testTitle: "invalid credentials display error message",
+    await recorder.step("Verify Registration Desk heading", async () => {
+      await expect(page.getByText("Registration Desk")).toBeVisible();
+    });
+
+    await recorder.step("Verify event selector is visible", async () => {
+      await expect(page.getByText("Select Active Event")).toBeVisible();
+    });
+
+    await recorder.step("Verify first event is loaded in dropdown", async () => {
+      await expect(
+        page.getByRole("option", { name: /Global Tech Summit 2026/i })
+      ).toBeAttached();
+    });
+
+    await recorder.save(testInfo);
   });
 
-  await setupMockRoutes(page);
+  test("CV-006: Registration form shows active status for open event", async ({
+    page,
+  }, testInfo) => {
+    const recorder = new ExecutionRecorder("CV-006", testInfo.title);
 
-  await recorder.step("Navigate to /signin", async () => {
-    await page.goto("/signin");
+    await recorder.step("Verify Registration Active badge is shown", async () => {
+      await expect(page.getByText("Registration Active")).toBeVisible();
+    });
+
+    await recorder.step("Verify form fields are enabled", async () => {
+      const nameInput = page.getByPlaceholder("Jane Smith");
+      await expect(nameInput).toBeEnabled();
+    });
+
+    await recorder.save(testInfo);
   });
 
-  await recorder.step("Fill email field with wrong email", async () => {
-    await page.locator('input[name="email"]').fill("wrong@example.com");
+  test("CV-007: Registered attendees table is visible with existing registrations", async ({
+    page,
+  }, testInfo) => {
+    const recorder = new ExecutionRecorder("CV-007", testInfo.title);
+
+    await recorder.step("Verify Registered Audience heading", async () => {
+      await expect(page.getByText("Registered Audience")).toBeVisible();
+    });
+
+    await recorder.step("Verify Alice Vance is listed", async () => {
+      await expect(page.getByText("Alice Vance")).toBeVisible();
+    });
+
+    await recorder.step("Verify Bob Builder is listed", async () => {
+      await expect(page.getByText("Bob Builder")).toBeVisible();
+    });
+
+    await recorder.save(testInfo);
   });
 
-  await recorder.step("Fill password field with wrong password", async () => {
-    await page.locator('input[name="password"]').fill("wrongpassword");
-  });
+  test("CV-008: Registering a new attendee shows success message", async ({
+    page,
+  }, testInfo) => {
+    const recorder = new ExecutionRecorder("CV-008", testInfo.title);
 
-  await recorder.step("Submit the form", async () => {
-    await page.getByRole("button", { name: /sign in/i }).click();
-  });
+    await recorder.step("Fill in attendee name", async () => {
+      await page.getByPlaceholder("Jane Smith").fill("New Attendee");
+    });
 
-  await recorder.step("Assert error message appears", async () => {
-    await expect(
-      page.getByText(/invalid email or password/i)
-    ).toBeVisible({ timeout: 10000 });
-  });
+    await recorder.step("Fill in attendee email", async () => {
+      await page.getByPlaceholder("jane@smith.com").fill("newattendee@test.com");
+    });
 
-  await recorder.save(testInfo);
+    await recorder.step("Fill in attendee phone", async () => {
+      await page.getByPlaceholder("+1 (555) 000-0000").fill("+1 (555) 777-8888");
+    });
+
+    await recorder.step("Submit registration form", async () => {
+      await page.getByRole("button", { name: /confirm registration/i }).click();
+    });
+
+    await recorder.step("Verify success message", async () => {
+      await expect(
+        page.getByText(/attendee registered successfully/i)
+      ).toBeVisible();
+    });
+
+    await recorder.save(testInfo);
+  });
 });
