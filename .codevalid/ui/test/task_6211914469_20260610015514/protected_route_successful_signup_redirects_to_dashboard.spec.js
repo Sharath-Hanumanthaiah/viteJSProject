@@ -73,7 +73,8 @@ test("Successful Sign Up Redirects to Dashboard", async ({ page }, testInfo) => 
   await recorder.step("Verify the user is redirected to the protected home dashboard", async () => {
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole("heading", { name: "Registration Desk" })).toBeVisible();
-    await expect(page.getByText("Organizer Onboarding Session")).toBeVisible();
+    await expect(page.locator("select")).toBeVisible();
+    await expect(page.locator("select")).toHaveValue("event-101");
     await expect(page.getByText("Select Active Event")).toBeVisible();
   });
 

@@ -1,9 +1,9 @@
 import { test, expect } from "@playwright/test";
-import { ExecutionRecorder } from "../../../helpers/execution-recorder.js";
+import { ExecutionRecorder } from "../../helpers/execution-recorder.js";
 import {
   setupUnauthenticatedSession,
   mockSuccessfulSigninFlow,
-} from "../../../helpers/mock-api.js";
+} from "../../helpers/mock-api.js";
 
 const signinCredentials = {
   email: "john@example.com",
@@ -63,7 +63,8 @@ test("Successful Sign In Redirects to Home", async ({ page }, testInfo) => {
   await recorder.step("Verify redirect to route '/' and authenticated home state", async () => {
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole("heading", { name: "Registration Desk" })).toBeVisible();
-    await expect(page.getByText("Annual Tech Summit")).toBeVisible();
+    await expect(page.locator("select")).toBeVisible();
+    await expect(page.locator("select")).toHaveValue("event-001");
     await expect(page.getByText("Select Active Event")).toBeVisible();
   });
 

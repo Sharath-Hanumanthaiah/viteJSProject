@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
-import { ExecutionRecorder } from "../../../helpers/execution-recorder.js";
-import { mockSuccessfulSigninFlow } from "../../../helpers/mock-api.js";
+import { ExecutionRecorder } from "../../helpers/execution-recorder.js";
+import { mockSuccessfulSigninFlow } from "../../helpers/mock-api.js";
 
 const signinCredentials = {
   email: "john@example.com",
@@ -56,14 +56,16 @@ test("Authenticated User Directly Accesses Home Page", async ({ page }, testInfo
   await recorder.step("Verify redirect to '/' and home renders", async () => {
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole("heading", { name: "Registration Desk" })).toBeVisible();
-    await expect(page.getByText("Annual Tech Summit")).toBeVisible();
+    await expect(page.locator("select")).toBeVisible();
+    await expect(page.locator("select")).toHaveValue("event-001");
   });
 
   await recorder.step("Navigate again directly to '/' and confirm no redirection occurs", async () => {
     await page.goto("/");
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole("heading", { name: "Registration Desk" })).toBeVisible();
-    await expect(page.getByText("Annual Tech Summit")).toBeVisible();
+    await expect(page.locator("select")).toBeVisible();
+    await expect(page.locator("select")).toHaveValue("event-001");
   });
 
   console.log("CODEVALID_TEST_ASSERTION_OK:home_authenticated_user_accesses_home_directly");

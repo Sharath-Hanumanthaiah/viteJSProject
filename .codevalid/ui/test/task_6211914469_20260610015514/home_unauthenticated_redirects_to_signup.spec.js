@@ -1,9 +1,9 @@
 import { test, expect } from "@playwright/test";
-import { ExecutionRecorder } from "../../../helpers/execution-recorder.js";
+import { ExecutionRecorder } from "../../helpers/execution-recorder.js";
 import {
   setupUnauthenticatedSession,
   mockProtectedHomePageApis,
-} from "../../../helpers/mock-api.js";
+} from "../../helpers/mock-api.js";
 
 test("Unauthenticated User Accessing Home uses configured protected-route redirect", async ({ page }, testInfo) => {
   const recorder = new ExecutionRecorder({
