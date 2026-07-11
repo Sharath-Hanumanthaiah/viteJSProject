@@ -1,73 +1,100 @@
 import { test, expect } from "@playwright/test";
 import { ExecutionRecorder } from "../../helpers/execution-recorder.js";
-import { mockSuccessfulSigninFlow } from "../../helpers/mock-api.js";
+import {
+  setupUnauthenticatedSession,
+  mockSignInPageApis,
+  mockSuccessfulSigninFlow,
+} from "../../helpers/mock-api.js";
 
-const signinCredentials = {
-  email: "john@example.com",
-  password: "secret123",
+const signedInUser = {
+  id: "user-auth-home-001",
+  username: "janedoe",
+  email: "jane@example.com",
+  fullName: "Jane Doe",
 };
 
-const authenticatedUser = {
-  id: "user-001",
-  username: "johndoe",
-  fullName: "John Doe",
-  email: "john@example.com",
-  organization: "Acme Corp",
-};
+const authToken = "token-auth-home-001";
 
-const dashboardEvents = [
+const events = [
   {
     id: "event-001",
     title: "Annual Tech Summit",
-    description: "Flagship event for the workspace.",
-    location: "Main Hall",
-    startDate: "2026-07-10",
-    endDate: "2026-07-12",
-    registrationCount: 12,
+    startDate: "2099-01-10",
+    endDate: "2099-01-12",
+    registrationCount: 0,
   },
 ];
 
 test("Authenticated User Directly Accesses Home Page", async ({ page }, testInfo) => {
   const recorder = new ExecutionRecorder({
     testId: "home_authenticated_user_accesses_home_directly",
-    testTitle: "Authenticated User Directly Accesses Home Page",
+    testName: "Authenticated User Directly Accesses Home Page",
   });
 
-  await recorder.step("Register successful sign-in and home API mocks", async () => {
-    await mockSuccessfulSigninFlow(page, {
-      expectedCredentials: signinCredentials,
-      user: authenticatedUser,
-      token: "token-signin-success",
-      events: dashboardEvents,
+  try {
+    await recorder.step("Prepare unauthenticated session and signin mocks", async () => {
+      await setupUnauthenticatedSession(page);
+      await mockSignInPageApis(page);
+      await mockSuccessfulSigninFlow(page, {
+        expectedCredentials: {
+          email: "jane@example.com",
+          password: "secret123",
+        },
+        user: signedInUser,
+        token: authToken,
+        events,
+      });
+
+      await page.route("**/api/registrations*", async (route) => {
+        if (route.request().method() === "GET") {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify([]),
+          });
+        } else {
+          await route.fallback();
+        }
+      });
     });
-  });
 
-  await recorder.step("Navigate to '/signin'", async () => {
-    await page.goto("/signin");
-    await expect(page.getByRole("heading", { name: "Welcome Back" })).toBeVisible();
-  });
+    await recorder.step("Navigate to sign in page", async () => {
+      await page.goto("/signin");
+      await expect(page.getByRole("heading", { name: "Welcome Back" })).toBeVisible();
+    });
 
-  await recorder.step("Enter valid credentials and submit", async () => {
-    await page.getByPlaceholder("john@example.com").fill(signinCredentials.email);
-    await page.getByPlaceholder("••••••••").fill(signinCredentials.password);
-    await page.getByRole("button", { name: /sign in/i }).click();
-  });
+    await recorder.step("Enter valid credentials and submit", async () => {
+      await page.locator('[name="email"]').fill("jane@example.com");
+      await page.locator('[name="password"]').fill("secret123");
+      await page.getByRole("button", { name: /sign in/i }).click();
+    });
 
-  await recorder.step("Verify redirect to '/' and home renders", async () => {
-    await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("heading", { name: "Registration Desk" })).toBeVisible();
-    await expect(page.locator("select")).toBeVisible();
-    await expect(page.locator("select")).toHaveValue("event-001");
-  });
+    await recorder.step("Verify redirect to home after sign in", async () => {
+      await expect(page).toHaveURL(/\/$/);
+      await expect(page.getByRole("heading", { name: "Registration Desk" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Registered Audience" })).toBeVisible();
+      await expect(page.getByRole("combobox")).toBeVisible();
+      await expect(page.getByRole("combobox")).toHaveValue("event-001");
+    });
 
-  await recorder.step("Navigate again directly to '/' and confirm no redirection occurs", async () => {
-    await page.goto("/");
-    await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("heading", { name: "Registration Desk" })).toBeVisible();
-    await expect(page.locator("select")).toBeVisible();
-    await expect(page.locator("select")).toHaveValue("event-001");
-  });
+    await recorder.step("Verify token persisted to localStorage", async () => {
+      await expect
+        .poll(() => page.evaluate(() => localStorage.getItem("token")))
+        .toBe(authToken);
+    });
 
-  console.log("CODEVALID_TEST_ASSERTION_OK:home_authenticated_user_accesses_home_directly");
-  await recorder.save(testInfo);
+    await recorder.step("Navigate directly to home again while authenticated", async () => {
+      await page.goto("/");
+    });
+
+    await recorder.step("Verify home remains accessible without redirect", async () => {
+      await expect(page).toHaveURL(/\/$/);
+      await expect(page.getByRole("heading", { name: "Registration Desk" })).toBeVisible();
+      await expect(page.getByText("No Registered Attendees")).toBeVisible();
+    });
+
+    console.log("CODEVALID_TEST_ASSERTION_OK:home_authenticated_user_accesses_home_directly");
+  } finally {
+    await recorder.save(testInfo);
+  }
 });

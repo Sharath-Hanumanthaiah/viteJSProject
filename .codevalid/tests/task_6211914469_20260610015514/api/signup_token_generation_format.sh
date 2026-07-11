@@ -13,7 +13,7 @@ cleanup_files() {
 }
 trap cleanup_files EXIT
 
-# Given — prepare unique signup payload for token validation
+# Given — prepare unique signup payload for token verification
 :
 
 # When — submit successful signup request
@@ -23,32 +23,22 @@ curl -sS -o "$RESPONSE_FILE" -w '%{http_code}' \
   --data "{\"username\":\"${USERNAME}\",\"email\":\"${EMAIL}\",\"password\":\"${PASSWORD}\",\"fullName\":\"${FULL_NAME}\"}" \
   > "$STATUS_FILE"
 
-# Then — expect token format to include the returned user id
+# Then — expect 201 and token format simulated-jwt-token-for-{userId}
 STATUS="$(cat "$STATUS_FILE")"
 [ "$STATUS" = "201" ]
-USER_ID="$(python3 - <<'PY' "$RESPONSE_FILE"
-import json, sys
-with open(sys.argv[1], 'r', encoding='utf-8') as fh:
-    data = json.load(fh)
-print(data['user']['id'])
+python3 - "$RESPONSE_FILE" <<'PY'
+import json
+import sys
+from pathlib import Path
+payload = json.loads(Path(sys.argv[1]).read_text())
+user = payload.get("user", {})
+token = payload.get("token", "")
+user_id = user.get("id", "")
+assert user_id.startswith("user_"), f"unexpected user id: {user_id}"
+expected = f"simulated-jwt-token-for-{user_id}"
+assert token == expected, f"unexpected token: {token} != {expected}"
 PY
-)"
-TOKEN="$(python3 - <<'PY' "$RESPONSE_FILE"
-import json, sys
-with open(sys.argv[1], 'r', encoding='utf-8') as fh:
-    data = json.load(fh)
-print(data['token'])
-PY
-)"
-[ -n "$USER_ID" ]
-[ "$TOKEN" = "simulated-jwt-token-for-${USER_ID}" ]
-grep -F "\"username\":\"${USERNAME}\"" "$RESPONSE_FILE" >/dev/null
-grep -F "\"email\":\"${EMAIL}\"" "$RESPONSE_FILE" >/dev/null
-if grep -F '"password":' "$RESPONSE_FILE" >/dev/null; then
-  echo "password should not be returned in signup response"
-  exit 1
-fi
-
-echo "CODEVALID_TEST_ASSERTION_OK:signup_token_generation_format"
 
 # Cleanup — no delete endpoint exists for users in this in-memory API; unique data prevents collisions and state resets with container lifecycle
+
+echo "CODEVALID_TEST_ASSERTION_OK:signup_token_generation_format"

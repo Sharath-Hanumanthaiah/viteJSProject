@@ -39,6 +39,6 @@ if grep -F '"password":' "$RESPONSE_FILE" >/dev/null; then
   exit 1
 fi
 
-echo "CODEVALID_TEST_ASSERTION_OK:signup_success_all_required_fields"
-
 # Cleanup — no delete endpoint exists for users in this in-memory API; unique data prevents collisions and state resets with container lifecycle
+
+echo "CODEVALID_TEST_ASSERTION_OK:signup_success_all_required_fields"

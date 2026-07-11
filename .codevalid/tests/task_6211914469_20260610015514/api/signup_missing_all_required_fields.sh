@@ -12,7 +12,7 @@ trap cleanup_files EXIT
 # Given — prepare empty signup payload
 :
 
-# When — submit signup request with empty JSON body
+# When — submit signup request with an empty JSON body
 curl -sS -o "$RESPONSE_FILE" -w '%{http_code}' \
   -X POST "$BASE_URL/api/auth/signup" \
   -H 'Content-Type: application/json' \
@@ -24,6 +24,6 @@ STATUS="$(cat "$STATUS_FILE")"
 [ "$STATUS" = "400" ]
 grep -F '"message":"Username, email, password, and full name are required."' "$RESPONSE_FILE" >/dev/null
 
-echo "CODEVALID_TEST_ASSERTION_OK:signup_missing_all_required_fields"
+# Cleanup — stateless negative test; no user created
 
-# Cleanup — stateless negative validation case; no user should be created
+echo "CODEVALID_TEST_ASSERTION_OK:signup_missing_all_required_fields"

@@ -12,7 +12,7 @@ cleanup_files() {
 }
 trap cleanup_files EXIT
 
-# Given — prepare payload missing required fullName
+# Given — prepare payload missing fullName
 :
 
 # When — submit signup request without fullName
@@ -27,6 +27,6 @@ STATUS="$(cat "$STATUS_FILE")"
 [ "$STATUS" = "400" ]
 grep -F '"message":"Username, email, password, and full name are required."' "$RESPONSE_FILE" >/dev/null
 
-echo "CODEVALID_TEST_ASSERTION_OK:signup_missing_full_name"
+# Cleanup — stateless negative test; no user created
 
-# Cleanup — stateless negative validation case; no user should be created
+echo "CODEVALID_TEST_ASSERTION_OK:signup_missing_full_name"
