@@ -1,54 +1,48 @@
 import { test, expect } from "@playwright/test";
 import { ExecutionRecorder } from "../../helpers/execution-recorder.js";
-import { setupUnauthenticatedSession } from "../../helpers/mock-api.js";
+import {
+  setupUnauthenticatedSession,
+  mockSignInPageApis,
+  mockFailedSigninFlow,
+} from "../../helpers/mock-api.js";
 
-test("Sign In Fails With Valid Format But Invalid Credentials", async ({ page }, testInfo) => {
+test("Submit with valid email and wrong password", async ({ page }, testInfo) => {
   const recorder = new ExecutionRecorder({
     testId: "signin_invalid_credentials",
-    testTitle: "Sign In Fails With Valid Format But Invalid Credentials",
-  });
-
-  const invalidCredentials = {
-    email: "invalid@example.com",
-    password: "WrongPass123",
-  };
-
-  await setupUnauthenticatedSession(page);
-  await page.route("**/api/auth/signin", async (route) => {
-    const request = route.request();
-    if (request.method() !== "POST") {
-      await route.fallback();
-      return;
-    }
-
-    const payload = JSON.parse(request.postData() || "{}");
-    expect(payload).toEqual(invalidCredentials);
-
-    await route.fulfill({
-      status: 401,
-      contentType: "application/json",
-      body: JSON.stringify({ message: "Invalid email or password" }),
-    });
+    testTitle: "Submit with valid email and wrong password",
   });
 
   try {
-    recorder.recordStep("Navigate to /signin", { route: "/signin" });
-    await page.goto("/signin");
+    await recorder.step("Prepare unauthenticated session and failed signin mock", async () => {
+      await setupUnauthenticatedSession(page);
+      await mockSignInPageApis(page);
+      await mockFailedSigninFlow(page, {
+        message: "Invalid email or password.",
+      });
+    });
 
-    recorder.recordStep("Enter invalid but well-formed email", { email: invalidCredentials.email });
-    await page.getByPlaceholder("john@example.com").fill(invalidCredentials.email);
+    await recorder.step("Open the sign-in page", async () => {
+      await page.goto("/signin");
+      await expect(page.getByRole("heading", { name: "Welcome Back" })).toBeVisible();
+    });
 
-    recorder.recordStep("Enter invalid password");
-    await page.getByPlaceholder("••••••••").fill(invalidCredentials.password);
+    await recorder.step("Enter valid email and incorrect password", async () => {
+      await page.locator('[name="email"]').fill("testuser@example.com");
+      await page.locator('[name="password"]').fill("WrongPassword123");
+    });
 
-    recorder.recordStep("Submit signin form");
-    await page.getByRole("button", { name: /sign in/i }).click();
+    await recorder.step("Submit invalid credentials", async () => {
+      await page.getByRole("button", { name: /^Sign In$/ }).click();
+    });
 
-    recorder.recordStep("Assert authentication error and no redirect");
-    await expect(page.getByText("Invalid email or password")).toBeVisible();
-    await expect(page).toHaveURL(/\/signin$/);
-    await expect(page.getByRole("heading", { name: "Welcome Back" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Registration Desk" })).not.toBeVisible();
+    await recorder.step("Verify authentication error and no redirect", async () => {
+      await expect(page.getByText("Invalid email or password.")).toBeVisible();
+      await expect(page).toHaveURL(/\/signin$/);
+      await expect(page.locator('[name="email"]')).toHaveValue("testuser@example.com");
+      await expect(page.locator('[name="password"]')).toHaveValue("WrongPassword123");
+      const token = await page.evaluate(() => localStorage.getItem("token"));
+      expect(token).toBeNull();
+    });
 
     console.log("CODEVALID_TEST_ASSERTION_OK:signin_invalid_credentials");
   } finally {
