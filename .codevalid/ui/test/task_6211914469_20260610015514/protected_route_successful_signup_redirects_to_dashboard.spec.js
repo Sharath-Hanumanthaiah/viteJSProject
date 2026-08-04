@@ -11,23 +11,24 @@ test("Successful Sign Up Redirects to Dashboard", async ({ page }, testInfo) => 
     "Successful Sign Up Redirects to Dashboard"
   );
 
-  const signedUpUser = {
+  const createdUser = {
     id: "user-002",
     username: "janedoe",
     fullName: "Jane Doe",
     email: "jane@example.com",
-    organization: "Example Org",
+    organization: "Nova Labs",
+    phone: "+1 (555) 000-0000",
   };
 
   const events = [
     {
-      id: "event-100",
-      title: "Community Launch Night",
-      description: "First event available after signup.",
-      location: "Auditorium",
-      startDate: "2026-08-01",
-      endDate: "2026-08-02",
-      registrationCount: 0,
+      id: "event-101",
+      title: "Organizer Onboarding Session",
+      description: "Workspace starter event.",
+      location: "Conference Room A",
+      startDate: "2026-08-15",
+      endDate: "2026-08-16",
+      registrationCount: 3,
     },
   ];
 
@@ -37,7 +38,15 @@ test("Successful Sign Up Redirects to Dashboard", async ({ page }, testInfo) => 
 
   await recorder.step("Mock successful sign-up and protected home page APIs", async () => {
     await mockSuccessfulSignupFlow(page, {
-      user: signedUpUser,
+      expectedPayload: {
+        username: "janedoe",
+        fullName: "Jane Doe",
+        email: "jane@example.com",
+        password: "secret123",
+        phone: "+1 (555) 000-0000",
+        organization: "Nova Labs",
+      },
+      user: createdUser,
       token: "token-signup-success",
       events,
     });
@@ -45,16 +54,16 @@ test("Successful Sign Up Redirects to Dashboard", async ({ page }, testInfo) => 
 
   await recorder.step("Navigate to the sign-up page", async () => {
     await page.goto("/signup");
-    await expect(page.getByRole("heading", { name: "Create Account" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Create an Account" })).toBeVisible();
   });
 
-  await recorder.step("Enter valid signup information", async () => {
+  await recorder.step("Enter valid sign-up details", async () => {
     await page.getByPlaceholder("johndoe").fill("janedoe");
     await page.getByPlaceholder("John Doe").fill("Jane Doe");
     await page.getByPlaceholder("john@example.com").fill("jane@example.com");
-    await page.locator('input[placeholder="••••••••"]').nth(0).fill("secret123");
-    await page.locator('input[placeholder="••••••••"]').nth(1).fill("secret123");
-    await page.getByPlaceholder("Your company or organization").fill("Example Org");
+    await page.getByPlaceholder("••••••••").fill("secret123");
+    await page.getByPlaceholder("+1 (555) 000-0000").fill("+1 (555) 000-0000");
+    await page.getByPlaceholder("Acme Corp").fill("Nova Labs");
   });
 
   await recorder.step("Submit the sign-up form", async () => {
@@ -65,11 +74,11 @@ test("Successful Sign Up Redirects to Dashboard", async ({ page }, testInfo) => 
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole("heading", { name: "Registration Desk" })).toBeVisible();
     await expect(page.locator("select")).toBeVisible();
-    await expect(page.locator("select")).toHaveValue("event-100");
+    await expect(page.locator("select")).toHaveValue("event-101");
     await expect(page.getByText("Select Active Event")).toBeVisible();
   });
 
-  await recorder.step("Verify the session token is stored for authenticated access", async () => {
+  await recorder.step("Verify the authenticated session is stored", async () => {
     await expect.poll(async () => page.evaluate(() => localStorage.getItem("token"))).toBe("token-signup-success");
   });
 
