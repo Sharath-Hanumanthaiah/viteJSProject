@@ -19,8 +19,8 @@ test("event_registration_count_displayed", async ({ page }, testInfo) => {
 
     await recorder.step("Load Events page", async () => {
       await page.goto("/events");
-      await expect(page.getByText("Event X")).toBeVisible();
-      await expect(page.getByText("Event Y")).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Event X" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Event Y" })).toBeVisible();
     });
 
     await recorder.step("Verify registration counts are shown per card", async () => {

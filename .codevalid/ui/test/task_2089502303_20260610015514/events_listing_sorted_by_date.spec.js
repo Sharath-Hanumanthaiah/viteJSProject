@@ -20,9 +20,9 @@ test("events_listing_sorted_by_date", async ({ page }, testInfo) => {
     await recorder.step("Load Events page", async () => {
       await page.goto("/events");
       await expect(page.getByRole("heading", { name: "Events Management Setup" })).toBeVisible();
-      await expect(page.getByText("Event A")).toBeVisible();
-      await expect(page.getByText("Event B")).toBeVisible();
-      await expect(page.getByText("Event C")).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Event A" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Event B" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Event C" })).toBeVisible();
     });
 
     await recorder.step("Verify chronological ordering in rendered cards", async () => {

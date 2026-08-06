@@ -26,7 +26,7 @@ test("Registration is blocked if attempted after event end date", async ({ page 
 
     await recorder.step("Open Home and verify registration is closed", async () => {
       await page.goto("/");
-      await expect(page.getByText("Registration Closed")).toBeVisible();
+      await expect(page.getByText("Registration Closed", { exact: true })).toBeVisible();
       await expect(page.getByText(`Registration closed on ${closedPastEvent.endDate}.`)).toBeVisible();
     });
 

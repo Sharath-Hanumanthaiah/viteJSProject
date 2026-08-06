@@ -19,8 +19,8 @@ test("events_persist_between_page_loads", async ({ page }, testInfo) => {
 
     await recorder.step("Open Events page and verify stored events", async () => {
       await page.goto("/events");
-      await expect(page.getByText("Architecture Review")).toBeVisible();
-      await expect(page.getByText("Customer Demo Day")).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Architecture Review" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Customer Demo Day" })).toBeVisible();
     });
 
     await recorder.step("Navigate away to Home page", async () => {
@@ -29,8 +29,8 @@ test("events_persist_between_page_loads", async ({ page }, testInfo) => {
 
     await recorder.step("Navigate back to Events page and verify persistence", async () => {
       await page.goto("/events");
-      await expect(page.getByText("Architecture Review")).toBeVisible();
-      await expect(page.getByText("Customer Demo Day")).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Architecture Review" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Customer Demo Day" })).toBeVisible();
       await expect(page.getByText("2 registered")).toBeVisible();
       await expect(page.getByText("4 registered")).toBeVisible();
 

@@ -29,7 +29,7 @@ test("event_creation_start_after_end_date", async ({ page }, testInfo) => {
 
     await recorder.step("Fill invalid date range", async () => {
       await page.locator('[name="title"]').fill("Conference");
-      await page.locator('[name="description"]').fill("Description");
+      await page.getByPlaceholder("Summarize event activities...").fill("Description");
       await page.locator('[name="location"]').fill("Hall B");
       await page.locator('[name="startDate"]').fill("2024-06-20");
       await page.locator('[name="endDate"]').fill("2024-06-10");

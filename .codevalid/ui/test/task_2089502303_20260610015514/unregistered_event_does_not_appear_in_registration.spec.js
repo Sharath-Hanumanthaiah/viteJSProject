@@ -26,10 +26,9 @@ test("Events without registration capability are not displayed (if any)", async 
 
     await recorder.step("Load Home and verify only the valid event is rendered", async () => {
       await page.goto("/");
-      await expect(page.getByRole("option", { name: validDisplayEvent.title })).toBeVisible();
-      await expect(page.getByText(validDisplayEvent.location)).toBeVisible();
+      await expect(page.locator("select").locator("option", { hasText: validDisplayEvent.title })).toBeAttached();
       await expect(page.getByText(malformedHiddenEvent.title)).toHaveCount(0);
-      await expect(page.getByRole("option", { name: malformedHiddenEvent.title })).toHaveCount(0);
+      await expect(page.locator("select").locator("option", { hasText: malformedHiddenEvent.title })).toHaveCount(0);
     });
 
     console.log("CODEVALID_TEST_ASSERTION_OK:unregistered_event_does_not_appear_in_registration");

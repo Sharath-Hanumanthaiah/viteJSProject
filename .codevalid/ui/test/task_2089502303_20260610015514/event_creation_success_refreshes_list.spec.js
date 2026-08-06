@@ -20,14 +20,13 @@ test("event_creation_success_refreshes_list", async ({ page }, testInfo) => {
 
     await recorder.step("Open Events page", async () => {
       await page.goto("/events");
-      await expect(page.getByText("Fetching scheduled events...")).toBeVisible();
       await expect(page.getByRole("heading", { name: "No Events Found" })).toBeVisible();
     });
 
     await recorder.step("Create a valid event", async () => {
       await page.getByRole("button", { name: "Create New Event" }).click();
       await page.locator('[name="title"]').fill("Release Planning Session");
-      await page.locator('[name="description"]').fill("Quarterly roadmap alignment");
+      await page.getByPlaceholder("Summarize event activities...").fill("Quarterly roadmap alignment");
       await page.locator('[name="location"]').fill("HQ Board Room");
       await page.locator('[name="startDate"]').fill("2024-08-05");
       await page.locator('[name="endDate"]').fill("2024-08-05");

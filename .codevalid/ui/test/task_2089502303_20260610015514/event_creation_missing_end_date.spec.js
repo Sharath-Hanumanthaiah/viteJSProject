@@ -29,7 +29,7 @@ test("event_creation_missing_end_date", async ({ page }, testInfo) => {
 
     await recorder.step("Fill all fields except end date", async () => {
       await page.locator('[name="title"]').fill("Meeting");
-      await page.locator('[name="description"]').fill("Description");
+      await page.getByPlaceholder("Summarize event activities...").fill("Description");
       await page.locator('[name="location"]').fill("Conference Room A");
       await page.locator('[name="startDate"]').fill("2024-06-15");
     });

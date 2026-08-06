@@ -29,7 +29,7 @@ test("event_creation_missing_location", async ({ page }, testInfo) => {
 
     await recorder.step("Fill all fields except location", async () => {
       await page.locator('[name="title"]').fill("Workshop");
-      await page.locator('[name="description"]').fill("Description");
+      await page.getByPlaceholder("Summarize event activities...").fill("Description");
       await page.locator('[name="startDate"]').fill("2024-06-15");
       await page.locator('[name="endDate"]').fill("2024-06-17");
     });

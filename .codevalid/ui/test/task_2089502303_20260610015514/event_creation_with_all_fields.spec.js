@@ -31,7 +31,7 @@ test("event_creation_with_all_fields", async ({ page }, testInfo) => {
 
     await recorder.step("Fill all event fields", async () => {
       await page.locator('[name="title"]').fill("Annual Conference");
-      await page.locator('[name="description"]').fill("Annual tech event for developers");
+      await page.getByPlaceholder("Summarize event activities...").fill("Annual tech event for developers");
       await page.locator('[name="location"]').fill("Convention Center, New York");
       await page.locator('[name="startDate"]').fill("2024-06-15");
       await page.locator('[name="endDate"]').fill("2024-06-17");

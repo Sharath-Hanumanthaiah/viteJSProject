@@ -25,7 +25,7 @@ test("event_creation_optional_description", async ({ page }, testInfo) => {
 
     await recorder.step("Fill required fields and leave description empty", async () => {
       await page.locator('[name="title"]').fill("Lunch & Learn");
-      await expect(page.locator('[name="description"]')).toHaveValue("");
+      await expect(page.getByPlaceholder("Summarize event activities...")).toHaveValue("");
       await page.locator('[name="location"]').fill("Cafeteria");
       await page.locator('[name="startDate"]').fill("2024-07-01");
       await page.locator('[name="endDate"]').fill("2024-07-01");
