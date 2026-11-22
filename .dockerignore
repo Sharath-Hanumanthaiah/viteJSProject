@@ -1,0 +1,25 @@
+# Never copy node_modules into the image — installed fresh by npm ci
+node_modules
+
+# Vite / framework build outputs
+dist
+.output
+.nuxt
+.next
+.svelte-kit
+
+# Playwright local browser cache (installed at build time inside the image)
+.playwright-browsers
+
+# Test artifacts (generated at run time, not build time)
+playwright-report
+test-results
+.codevalid/ui/recording
+.codevalid/ui/run-results
+
+# pnpm lockfile — this repo uses npm
+pnpm-lock.yaml
+
+# OS / editor noise
+.DS_Store
+*.log
